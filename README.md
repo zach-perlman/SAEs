@@ -255,10 +255,3 @@ Extend the `Evaluator` class in `src/evaluate.py` to compute additional metrics 
 ### Custom Data Sources
 
 Modify the `_StreamingDataset` class in `src/data_loader.py` to support new data formats or sources.
-
-## Performance Considerations
-
-- Use `torch.bfloat16` for memory efficiency with large models
-- Enable streaming for large datasets to avoid memory issues  
-- Adjust `batch_size` and `num_workers` based on your hardware
-- Use appropriate `device_map` settings for multi-GPU setups
