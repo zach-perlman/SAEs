@@ -1,0 +1,13 @@
+torch
+transformers
+datasets
+numpy
+PyYAML
+transformer-lens
+plotly
+wandb
+tiktoken
+tqdm
+scikit-learn
+accelerate
+matplotlib

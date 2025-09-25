@@ -1,0 +1,28 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*build/
+*dist/
+*.egg-info/
+
+# Virtual environment
+venv/
+env/
+.env
+*.env
+
+# Model weights and data
+models/
+*.pt
+*.bin
+*.pth
+data/
+
+# IDE and OS specific files
+.vscode/
+.idea/
+.DS_Store
+*.swo
+*.swp

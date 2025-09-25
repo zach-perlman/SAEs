@@ -1,0 +1,60 @@
+# Default configuration for SAE experiments
+
+model:
+  type: RouteMatryoshkaSAE # VanillaSAE, GatedSAE, TopKSAE, JumpReLUSAE, RouteSAE, MatryoshkaSAE, RouteMatryoshkaSAE
+  # For RouteSAE
+  base_sae_type: MatryoshkaSAE
+  start_layer: 9
+  end_layer: 27
+  # General model params
+  hidden_size: 2048
+  latent_size: 63488
+  language_model_path: "Qwen/Qwen3-1.7B"
+  n_layers: 28
+  layer: 21 # For single-layer SAEs
+  # For TopKSAE
+  k: 60
+  # For JumpReLUSAE
+  threshold: 0.001
+  bandwidth: 0.001
+  # For MatryoshkaSAE
+  group_sizes: [2048, 4096, 8192, 16384, 32768] # Must sum to latent_size (63488)
+  # For RouteSAE
+  aggre: 'sum' # 'sum' or 'mean'
+  routing: 'hard' # 'hard' or 'soft'
+
+training:
+  batch_size: 164
+  max_length: 512
+  lr: 0.0005
+  betas: [0.9, 0.999]
+  num_epochs: 1
+  steps: 500_000 # Number of training steps is required for streaming datasets
+  seed: 42
+  device: "cuda:0"
+  l1_coefficient: 0.0005 # L1 sparsity penalty coefficient
+  use_chat_template: True
+  # Stability improvements from original repo
+  gradient_clip_norm: 5.0
+  unit_norm_frequency: 10
+  num_warmup_steps: 200
+  early_stopping_patience: 100
+  early_stopping_min_delta: 0.0001 # Minimum change in validation loss to be considered an improvement
+  log_frequency: 10 # How often to print training stats
+
+  # Dead feature revival
+  dead_feature_threshold: 5_000_000
+  auxk_alpha: 0.0625
+
+data:
+  train_path: "openbmb/ultra-fineweb"
+  dataset_type: "ultrafineweb"
+  dataset_split: "en"
+  streaming: True
+  max_samples: 500_000_000
+  num_eval_samples: 1_000
+
+wandb:
+  use_wandb: False
+  project: "sae-experiments"
+  entity: ""
