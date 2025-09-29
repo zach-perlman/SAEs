@@ -63,17 +63,88 @@ class CosineWarmupLR(LambdaLR):
 def unit_norm_decoder(model: torch.nn.Module) -> None:
     """
     Normalize the decoder weights to unit norm.
+    For Matryoshka-style models with W_dec Parameter, normalizes along dimension 1.
+    For standard models with decoder Linear layer, normalizes along dimension 0.
     """
     if isinstance(model, (sae_models.VanillaSAE, sae_models.GatedSAE, sae_models.TopKSAE, sae_models.JumpReLUSAE)):
-        model.decoder.weight.data.div_(torch.norm(model.decoder.weight.data, dim=0, keepdim=True))
+        eps = torch.finfo(model.decoder.weight.dtype).eps
+        model.decoder.weight.data.div_(torch.norm(model.decoder.weight.data, dim=0, keepdim=True) + eps)
     elif isinstance(model, (RouteSAE, RouteMatryoshkaSAE)):
         # For routed models, normalize the base SAE's decoder
         if hasattr(model.sae, 'decoder'):
-            model.sae.decoder.weight.data.div_(torch.norm(model.sae.decoder.weight.data, dim=0, keepdim=True))
+            eps = torch.finfo(model.sae.decoder.weight.dtype).eps
+            model.sae.decoder.weight.data.div_(torch.norm(model.sae.decoder.weight.data, dim=0, keepdim=True) + eps)
         elif hasattr(model.sae, 'W_dec'): # Matryoshka style
-             model.sae.W_dec.data.div_(torch.norm(model.sae.W_dec.data, dim=1, keepdim=True))
+            eps = torch.finfo(model.sae.W_dec.dtype).eps
+            model.sae.W_dec.data.div_(torch.norm(model.sae.W_dec.data, dim=1, keepdim=True) + eps)
     elif isinstance(model, MatryoshkaSAE):
-        model.W_dec.data.div_(torch.norm(model.W_dec.data, dim=1, keepdim=True))
+        eps = torch.finfo(model.W_dec.dtype).eps
+        model.W_dec.data.div_(torch.norm(model.W_dec.data, dim=1, keepdim=True) + eps)
+
+
+@torch.no_grad()
+def remove_gradient_parallel_to_decoder_directions(model: torch.nn.Module) -> None:
+    """
+    Remove the component of W_dec gradient that is parallel to the decoder directions.
+    This maintains decoder orthogonality and prevents decoder collapse.
+    
+    For Matryoshka models: W_dec has shape [latent_size, hidden_size]
+    For standard models: decoder.weight has shape [hidden_size, latent_size]
+    """
+    if isinstance(model, MatryoshkaSAE):
+        if model.W_dec.grad is not None:
+            # W_dec shape: [latent_size, hidden_size]
+            # We want to normalize along the hidden_size dimension (dim=1)
+            eps = torch.finfo(model.W_dec.dtype).eps
+            normed_W_dec = model.W_dec / (torch.norm(model.W_dec, dim=1, keepdim=True) + eps)
+            
+            # Compute parallel component: sum over hidden_size dimension
+            # parallel_component shape: [latent_size]
+            parallel_component = (model.W_dec.grad * normed_W_dec).sum(dim=1, keepdim=True)
+            
+            # Remove parallel component from gradient
+            model.W_dec.grad -= parallel_component * normed_W_dec
+            
+    elif isinstance(model, (RouteSAE, RouteMatryoshkaSAE)):
+        if hasattr(model.sae, 'W_dec') and model.sae.W_dec.grad is not None:
+            eps = torch.finfo(model.sae.W_dec.dtype).eps
+            normed_W_dec = model.sae.W_dec / (torch.norm(model.sae.W_dec, dim=1, keepdim=True) + eps)
+            parallel_component = (model.sae.W_dec.grad * normed_W_dec).sum(dim=1, keepdim=True)
+            model.sae.W_dec.grad -= parallel_component * normed_W_dec
+
+
+@torch.no_grad()
+def geometric_median(points: torch.Tensor, max_iter: int = 100, tol: float = 1e-5) -> torch.Tensor:
+    """
+    Compute the geometric median of a set of points using Weiszfeld's algorithm.
+    
+    The geometric median minimizes the sum of Euclidean distances to all points,
+    making it more robust to outliers than the arithmetic mean.
+    
+    Args:
+        points: Tensor of shape [n_points, dimension]
+        max_iter: Maximum number of iterations
+        tol: Convergence tolerance
+    
+    Returns:
+        Geometric median of shape [dimension]
+    """
+    guess = points.mean(dim=0)
+    prev = torch.zeros_like(guess)
+    weights = torch.ones(len(points), device=points.device)
+
+    for _ in range(max_iter):
+        prev = guess
+        # Compute inverse distances as weights
+        weights = 1 / torch.norm(points - guess, dim=1)
+        weights /= weights.sum()
+        # Weighted average
+        guess = (weights.unsqueeze(1) * points).sum(dim=0)
+        # Check convergence
+        if torch.norm(guess - prev) < tol:
+            break
+
+    return guess
 
 
 
